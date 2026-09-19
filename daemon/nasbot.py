@@ -10,10 +10,16 @@ from dotenv import load_dotenv
 
 # Load environment variables
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-load_dotenv(os.path.join(SCRIPT_DIR, ".env"))
+
+SECRETS_FILE = os.path.expanduser("~/.config/nas-bot/secrets")
+load_dotenv(SECRETS_FILE)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+
+ALLOWED_USER_IDS = {
+    uid.strip() for uid in os.getenv("ALLOWED_USER_IDS", "").split(",") if uid.strip()
+}
 
 COMMANDS = {}
 
@@ -22,7 +28,12 @@ def send_reply(chat_id, text):
     """Sends a reply text message to a Telegram chat."""
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        data = {'chat_id': chat_id, 'text': text}
+        data = {
+            'chat_id': chat_id,
+            'text': text,
+            'parse_mode': 'HTML',
+            'disable_web_page_preview': True
+        }
         response = requests.post(url, data=data, timeout=10)
         return response.status_code == 200
     except Exception as e:
@@ -127,6 +138,7 @@ def process_command(message, text):
             react_to_message(chat_id, message_id, "👍")
         except Exception as e:
             print(f"Error executing /{cmd}: {e}", flush=True)
+            send_reply(chat_id, f"⚠️ /{cmd} failed: {e}")
     else:
         send_reply(chat_id, f"Unknown command: /{cmd}")
 
@@ -138,21 +150,24 @@ def process_message(message):
     if msg_chat_id != str(CHAT_ID):
         print(f"Ignored message from unauthorized chat: {msg_chat_id}", flush=True)
         return
+    
+    sender_id = str(message.get("from", {}).get("id", ""))
+    if ALLOWED_USER_IDS and sender_id not in ALLOWED_USER_IDS:
+        print(f"Ignored command from non-whitelisted user: {sender_id}", flush=True)
+        return
 
-    if 'text' in message:
-        text = message['text']
-        if text.startswith("/"):
-            process_command(message, text)
+    if 'text' in message and message['text'].startswith("/"):
+        process_command(message, message['text'])
 
 
 def run_daemon():
     """Main loop for the Telegram listener."""
     if not BOT_TOKEN or not CHAT_ID:
-        print("Error: BOT_TOKEN or CHAT_ID not set in .env")
+        print(f"Error: BOT_TOKEN or CHAT_ID not set in {SECRETS_FILE}")
         return
 
     print(f"Daemon started. Listening for Chat ID: {CHAT_ID}")
-    env_path = os.path.join(SCRIPT_DIR, ".env")
+    env_path = SECRETS_FILE
     last_env_mtime = os.path.getmtime(env_path) if os.path.exists(env_path) else 0
 
     def restart_process():
