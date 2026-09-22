@@ -158,7 +158,3 @@ The daemon auto-discovers and loads commands on startup.
 - `requests` and `python-dotenv` (via pip)
 - systemd with `--user` support
 - `loginctl enable-linger` enabled for the user
-
-## License
-
-See original [tg-tools](https://github.com/KOWX712/tg-tools) repository for base daemon licensing.
