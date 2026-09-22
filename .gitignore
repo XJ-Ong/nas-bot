@@ -1,8 +1,10 @@
-# secret
-.env
+# Bot-level secrets (BOT_TOKEN, CHAT_ID, ALLOWED_USER_IDS)
+secrets
+*.secrets
 
-# generated
-tgd.service
-__pycache__
+# Per-command config (mount paths, timer names — machine-specific)
+**/.env
+
+# Python
+__pycache__/
 *.pyc
-chat.json

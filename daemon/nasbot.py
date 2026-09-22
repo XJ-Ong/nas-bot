@@ -1,67 +1,30 @@
 #!/usr/bin/env python3
 
+# Telegram command listener. Forked from https://github.com/KOWX712/tg-tools (tgd.py).
+
 import os
 import sys
 import time
-import requests
 import signal
 import importlib.util
-from dotenv import load_dotenv
+import requests
 
-# Load environment variables
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR)  # nas-bot/
+sys.path.insert(0, REPO_ROOT)
 
-SECRETS_FILE = os.path.expanduser("~/.config/nas-bot/secrets")
-load_dotenv(SECRETS_FILE)
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-
-ALLOWED_USER_IDS = {
-    uid.strip() for uid in os.getenv("ALLOWED_USER_IDS", "").split(",") if uid.strip()
-}
+import lib  # noqa: E402
 
 COMMANDS = {}
 
 
-def send_reply(chat_id, text):
-    """Sends a reply text message to a Telegram chat."""
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        data = {
-            'chat_id': chat_id,
-            'text': text,
-            'parse_mode': 'HTML',
-            'disable_web_page_preview': True
-        }
-        response = requests.post(url, data=data, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"Error sending reply: {e}", flush=True)
-        return False
-
-
-def react_to_message(chat_id, message_id, emoji="👍"):
-    """Reacts to a message with an emoji."""
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setMessageReaction"
-        data = {
-            'chat_id': chat_id,
-            'message_id': message_id,
-            'reaction': [{'type': 'emoji', 'emoji': emoji}]
-        }
-        response = requests.post(url, json=data, timeout=10).json()
-        if not response.get('ok'):
-            print(f"Failed to react to message with {emoji}: {response}", flush=True)
-        else:
-            print(f"Reacted to message {message_id} with {emoji}", flush=True)
-
-    except Exception as e:
-        print(f"Error reacting to message: {e}", flush=True)
-
-
 def load_commands():
-    """Dynamically loads all command modules from the command/ directory."""
+    """
+    Dynamically loads all command modules from daemon/command/.
+    Supports two layouts:
+      - Flat file:   command/hello.py                -> /hello
+      - Subfolder:   command/diskcheck/diskcheck.py  -> /diskcheck
+    """
     global COMMANDS
     command_dir = os.path.join(SCRIPT_DIR, "command")
     if not os.path.isdir(command_dir):
@@ -74,11 +37,9 @@ def load_commands():
         module_path = None
 
         if entry.endswith(".py"):
-            # Flat file: command/hello.py → /hello
             module_name = entry[:-3]
             module_path = os.path.join(command_dir, entry)
         else:
-            # One-level subdirectory: command/tmux/tmux.py → /tmux
             subdir = os.path.join(command_dir, entry)
             if os.path.isdir(subdir):
                 nested = os.path.join(subdir, f"{entry}.py")
@@ -101,18 +62,16 @@ def load_commands():
 
 
 def update_command_list():
-    """Registers all loaded commands with Telegram's setMyCommands."""
+    """Registers all loaded commands with Telegram's setMyCommands (commands autocompletion)"""
     if not COMMANDS:
         return
-
     commands = []
     for name, mod in COMMANDS.items():
         cmd = getattr(mod, "COMMAND", name)
         help_text = getattr(mod, "HELP", "")
         commands.append({"command": cmd, "description": help_text[:128]})
-
     try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands"
+        url = f"https://api.telegram.org/bot{lib.BOT_TOKEN}/setMyCommands"
         response = requests.post(url, json={"commands": commands}, timeout=10).json()
         if response.get("ok"):
             print(f"Registered {len(commands)} command(s) with Telegram", flush=True)
@@ -124,95 +83,96 @@ def update_command_list():
 
 def process_command(message, text):
     """Routes a command message to the appropriate handler."""
-    chat_id = message['chat']['id']
-    message_id = message['message_id']
+    chat_id = message["chat"]["id"]
+    message_id = message["message_id"]
 
     parts = text.split()
     cmd = parts[0].lstrip("/").split("@")[0].lower()
 
     if cmd in COMMANDS:
         try:
-            response = COMMANDS[cmd].run(message, BOT_TOKEN)
+            response = COMMANDS[cmd].run(message, lib.BOT_TOKEN)
             if response:
-                send_reply(chat_id, response)
-            react_to_message(chat_id, message_id, "👍")
+                lib.send_telegram(response, chat_id=chat_id)
+            lib.react_to_message(chat_id, message_id, "👍")
         except Exception as e:
             print(f"Error executing /{cmd}: {e}", flush=True)
-            send_reply(chat_id, f"⚠️ /{cmd} failed: {e}")
+            lib.send_telegram(f"⚠️ /{cmd} failed: {e}", chat_id=chat_id)
     else:
-        send_reply(chat_id, f"Unknown command: /{cmd}")
+        lib.send_telegram(f"Unknown command: /{cmd}", chat_id=chat_id)
 
 
 def process_message(message):
     """Processes an individual message."""
-    chat_id = message['chat']['id']
-    msg_chat_id = str(chat_id)
-    if msg_chat_id != str(CHAT_ID):
-        print(f"Ignored message from unauthorized chat: {msg_chat_id}", flush=True)
+    chat_id = message["chat"]["id"]
+    if str(chat_id) != str(lib.CHAT_ID):
+        print(f"Ignored message from unauthorized chat: {chat_id}", flush=True)
         return
-    
+
     sender_id = str(message.get("from", {}).get("id", ""))
-    if ALLOWED_USER_IDS and sender_id not in ALLOWED_USER_IDS:
+    if lib.ALLOWED_USER_IDS and sender_id not in lib.ALLOWED_USER_IDS:
         print(f"Ignored command from non-whitelisted user: {sender_id}", flush=True)
         return
 
-    if 'text' in message and message['text'].startswith("/"):
-        process_command(message, message['text'])
+    if "text" in message and message["text"].startswith("/"):
+        process_command(message, message["text"])
+    # Non-command text is ignored
 
 
 def run_daemon():
     """Main loop for the Telegram listener."""
-    if not BOT_TOKEN or not CHAT_ID:
-        print(f"Error: BOT_TOKEN or CHAT_ID not set in {SECRETS_FILE}")
+    if not lib.BOT_TOKEN or not lib.CHAT_ID:
+        print(f"Error: BOT_TOKEN or CHAT_ID not set in {lib.SECRETS_FILE}")
         return
 
-    print(f"Daemon started. Listening for Chat ID: {CHAT_ID}")
-    env_path = SECRETS_FILE
-    last_env_mtime = os.path.getmtime(env_path) if os.path.exists(env_path) else 0
+    print(f"nasbot daemon started. Listening for Chat ID: {lib.CHAT_ID}", flush=True)
 
-    def restart_process():
+    last_secrets_mtime = (
+        os.path.getmtime(lib.SECRETS_FILE) if os.path.exists(lib.SECRETS_FILE) else 0
+    )
+
+    def restart_process(*_):
         print("\n--- Restarting daemon... ---", flush=True)
         sys.stdout.flush()
         sys.stderr.flush()
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-    signal.signal(signal.SIGHUP, lambda s, f: restart_process())
+    signal.signal(signal.SIGHUP, restart_process)
 
     load_commands()
     update_command_list()
     offset = 0
 
     while True:
-        if os.path.exists(env_path):
+        if os.path.exists(lib.SECRETS_FILE):
             try:
-                current_mtime = os.path.getmtime(env_path)
-                if current_mtime > last_env_mtime:
-                    print("\n--- .env change detected. ---", flush=True)
+                current_mtime = os.path.getmtime(lib.SECRETS_FILE)
+                if current_mtime > last_secrets_mtime:
+                    print("\n--- secrets file changed, restarting ---", flush=True)
                     restart_process()
             except Exception:
                 pass
 
         try:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-            params = {'offset': offset, 'timeout': 30}
+            url = f"https://api.telegram.org/bot{lib.BOT_TOKEN}/getUpdates"
+            params = {"offset": offset, "timeout": 30}
             response = requests.get(url, params=params, timeout=35).json()
-
-            if response.get('ok'):
-                for update in response['result']:
-                    if 'message' in update:
-                        process_message(update['message'])
-                    offset = update['update_id'] + 1
+            if response.get("ok"):
+                for update in response["result"]:
+                    if "message" in update:
+                        process_message(update["message"])
+                    offset = update["update_id"] + 1
             else:
-                print(f"Error from Telegram: {response}")
+                print(f"Error from Telegram: {response}", flush=True)
                 time.sleep(5)
         except requests.exceptions.RequestException as e:
-            print(f"Network error: {e}")
+            print(f"Network error: {e}", flush=True)
             time.sleep(5)
         except KeyboardInterrupt:
-            print("\nStopping daemon...")
+            print("\nStopping daemon...", flush=True)
             break
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"Unexpected error: {e}", flush=True)
             time.sleep(5)
 
 
