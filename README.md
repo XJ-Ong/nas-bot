@@ -43,8 +43,11 @@ Each command is self-contained under `daemon/command/<name>/` with its own confi
 git clone https://github.com/XJ-Ong/nas-bot.git
 cd nas-bot
 
-# Install Python dependencies
-pip3 install requests python-dotenv
+# Create an isolated virtual environment for this project's dependencies
+python3 -m venv venv
+source venv/bin/activate
+pip install requests python-dotenv
+deactivate
 
 # Run installer (creates config templates)
 ./install.sh
@@ -125,6 +128,7 @@ journalctl --user -u disk-check.service -n 20
 
 ```
 nas-bot/
+├── venv/                   # created locally
 ├── lib.py                  # Shared Telegram/formatting helpers
 ├── install.sh              # Setup script (creates config + systemd units)
 ├── secrets.example         # Bot-level config template
@@ -154,7 +158,7 @@ The daemon auto-discovers and loads commands on startup.
 
 ## Requirements
 
-- Python 3.7+
-- `requests` and `python-dotenv` (via pip)
+- Python 3.7+ with `venv` module (`python3-venv` or `python3-full`)
+- `requests` and `python-dotenv` (installed into the local venv)
 - systemd with `--user` support
 - `loginctl enable-linger` enabled for the user

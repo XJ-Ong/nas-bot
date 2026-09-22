@@ -9,7 +9,12 @@ SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 BIN_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/nas-bot"
 COMMAND_DIR="$REPO_DIR/daemon/command"
-PYTHON_BIN="$(command -v python3)"
+PYTHON_BIN="$REPO_DIR/venv/bin/python3"
+
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "Error: venv not found at $REPO_DIR/venv — run 'python3 -m venv venv && venv/bin/pip install requests python-dotenv' first." >&2
+  exit 1
+fi
 
 echo "Installing nas-bot from: $REPO_DIR"
 
@@ -98,7 +103,7 @@ Description=nas-bot Telegram command listener
 After=network.target
 
 [Service]
-ExecStart=$(command -v python3) $REPO_DIR/daemon/nasbot.py
+ExecStart=$PYTHON_BIN $REPO_DIR/daemon/nasbot.py
 WorkingDirectory=$REPO_DIR/daemon
 Environment=PYTHONUNBUFFERED=1
 Restart=always
