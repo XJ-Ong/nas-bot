@@ -60,7 +60,7 @@ def check_disks():
             continue
 
         usage = shutil.disk_usage(path)
-        used_pct = round(usage.used / usage.total * 100)
+        used_pct = usage.used / usage.total * 100
         avail_gb = usage.free / (1024 ** 3)
 
         emoji = lib.status_emoji(used_pct, threshold)
@@ -71,7 +71,7 @@ def check_disks():
 
         report_lines.append(
             f"{emoji} <b>{safe_label}</b>\n"
-            f"   <code>{bar}</code> {used_pct}% used · {avail_gb:.1f}G free"
+            f"   <code>{bar}</code> ({used_pct:.2f}%) · {avail_gb:.1f}G left"
         )
 
         if used_pct >= threshold:
