@@ -171,15 +171,7 @@ if ! systemctl --user daemon-reload; then
 fi
 
 echo ""
-echo "Install complete. Next steps:"
-echo "  1. Edit bot secrets:   \$EDITOR $CONFIG_DIR/secrets"
-echo "  2. Edit each command's config (created from .env.example wherever missing — see messages above)"
-echo "  3. Enable lingering:   sudo loginctl enable-linger \$USER   (one-time, as root)"
-echo "  4. Enable and start units, e.g.:"
-systemctl --user list-unit-files 2>/dev/null \
-  | awk '/\.timer$/ {print "       systemctl --user enable --now " $1}' \
-  || true
-echo "       systemctl --user enable --now nasbot.service"
+echo "Install complete. Continue reading README.md for the next steps"
 echo ""
 echo "  Tip: run 'systemctl --user list-timers' any time to see everything"
 echo "       currently scheduled, including anything left over from a"
