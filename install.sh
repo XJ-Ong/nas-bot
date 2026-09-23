@@ -11,13 +11,6 @@ CONFIG_DIR="$HOME/.config/nas-bot"
 COMMAND_DIR="$REPO_DIR/daemon/command"
 PYTHON_BIN="$REPO_DIR/venv/bin/python3"
 
-# Helper: check if a path is tracked in git (not ignored/untracked)
-is_tracked_in_git() {
-  local path="$1"
-  # Returns 0 if tracked, non-zero if ignored/untracked
-  git -C "$REPO_DIR" ls-files --error-unmatch "$path" &>/dev/null
-}
-
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "Error: venv not found at $REPO_DIR/venv — run 'python3 -m venv venv && venv/bin/pip install requests python-dotenv' first." >&2
   exit 1
@@ -41,12 +34,6 @@ if [[ -d "$COMMAND_DIR" ]]; then
   for cmd_dir in "$COMMAND_DIR"/*/; do
     [[ -f "$cmd_dir/.env.example" ]] || continue
     cmd_name=$(basename "$cmd_dir")
-    
-    # Skip gitignored/untracked commands
-    if ! is_tracked_in_git "daemon/command/$cmd_name/.env.example"; then
-      echo "Skipping untracked command: $cmd_name (gitignored or not committed)"
-      continue
-    fi
     
     if [[ ! -f "$cmd_dir/.env" ]]; then
       cp "$cmd_dir/.env.example" "$cmd_dir/.env"
@@ -128,40 +115,11 @@ EOF
 echo ""
 echo "Generating scheduled units from per-command .env files..."
 
-# Clean up legacy units from command renames (e.g., disk-check → diskcheck)
-# This prevents duplicate schedules when a command is renamed but old units remain enabled
-LEGACY_UNITS=(
-  "disk-check.service"
-  "disk-check.timer"
-  "disk-check-secondary.service"
-  "disk-check-secondary.timer"
-)
-
-for unit in "${LEGACY_UNITS[@]}"; do
-  if systemctl --user list-unit-files "$unit" 2>/dev/null | grep -q "$unit"; then
-    echo "Removing legacy unit: $unit"
-    systemctl --user stop "$unit" 2>/dev/null || true
-    systemctl --user disable "$unit" 2>/dev/null || true
-    rm -f "$SYSTEMD_USER_DIR/$unit"
-  fi
-done
-
 if [[ -d "$COMMAND_DIR" ]]; then
   for cmd_dir in "$COMMAND_DIR"/*/; do
     cmd_dir="${cmd_dir%/}"
     cmd_name=$(basename "$cmd_dir")
     [[ -f "$cmd_dir/.env" ]] || continue
-
-    # Skip gitignored/untracked commands — only install what's committed
-    if ! is_tracked_in_git "daemon/command/$cmd_name/.env.example"; then
-      echo "Skipping timer generation for untracked command: $cmd_name"
-      continue
-    fi
-
-    # Filter to only process git-tracked directories
-    if ! is_tracked_in_git "$cmd_dir"; then
-      continue
-    fi
 
     (
       set -a
