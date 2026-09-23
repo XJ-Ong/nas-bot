@@ -49,14 +49,15 @@ source venv/bin/activate
 pip install requests python-dotenv
 deactivate
 
-# Run installer (creates config templates)
+# Run installer (creates config templates and systemd units)
 ./install.sh
 ```
 
-The installer creates:
-- `~/.config/nas-bot/secrets` (bot token, chat ID, user whitelist)
-- `daemon/command/diskcheck/.env` (from `.env.example` template)
-- systemd service and timer units in `~/.config/systemd/user/`
+The installer:
+- Creates `~/.config/nas-bot/secrets` from `secrets.example` (bot token, chat ID, user whitelist)
+- Creates `.env` files from each command's `.env.example` template (if not already present)
+- **Dynamically generates** systemd service and timer units for all git-tracked commands in `~/.config/systemd/user/`
+- Skips gitignored commands (systemd service and timer units from private commands won't be installed automatically)
 
 ### 4. Configure
 
@@ -74,14 +75,15 @@ CHAT_ID="-987654321"
 ALLOWED_USER_IDS="111111111,222222222"
 ```
 
-Then configure the **disk check** command:
+Then configure each command's specific settings:
 
 ```bash
-# Set your mount paths and thresholds
 nano daemon/command/diskcheck/.env
 ```
 
-See `daemon/command/diskcheck/README.md` for config format details.
+Each command's `.env.example` should document its configuration options and timer schedules.
+
+**Note:** Timer/schedule values (`TIMER_*`, `RUN_MODE`, `ENTRY_SCRIPT`) are baked into the generated systemd units at install time. After changing them, re-run `./install.sh` to regenerate the units. Runtime-only values (e.g. `MOUNTS`) and bot secrets are read live — no re-run needed.
 
 ### 5. Enable Lingering (one-time, requires sudo)
 
@@ -104,9 +106,12 @@ loginctl show-user $USER | grep Linger
 # Start the Telegram daemon
 systemctl --user enable --now nasbot.service
 
-# Start disk check timers
-systemctl --user enable --now disk-check.timer
-systemctl --user enable --now disk-check-daily.timer
+# List all timer units
+systemctl --user list-unit-files | grep nas-bot
+
+# Enable disk check timers (for diskcheck command)
+systemctl --user enable --now diskcheck.timer
+systemctl --user enable --now diskcheck-secondary.timer
 ```
 
 ### 7. Test
@@ -121,27 +126,27 @@ Check logs:
 journalctl --user -u nasbot.service -f
 
 # Check timer execution
-journalctl --user -u disk-check.service -n 20
+journalctl --user -u diskcheck.service -n 20
 ```
 
 ## Structure
 
 ```
 nas-bot/
-├── venv/                   # created locally
-├── lib.py                  # Shared Telegram/formatting helpers
-├── install.sh              # Setup script (creates config + systemd units)
-├── secrets.example         # Bot-level config template
+├── venv/                     # Python virtual environment (created locally)
+├── lib.py                    # Shared Telegram/formatting helpers
+├── install.sh                # Dynamic setup script (discovers commands, generates systemd units)
+├── secrets.example           # Bot-level config template
 └── daemon/
-    ├── nasbot.py           # Telegram polling daemon (command dispatcher)
+    ├── nasbot.py             # Telegram polling daemon (command dispatcher)
     └── command/
-        └── diskcheck/      # Disk space monitoring
+        └── diskcheck/        # Disk space monitoring
             ├── diskcheck.py
-            ├── .env.example
+            ├── .env.example  # Declares timer schedules + command config
             └── README.md
 ```
 
-Each command under `daemon/command/` is self-contained with its own config and documentation. To add a new command, create a new folder following the same pattern — no changes needed to the daemon.
+Each command under `daemon/command/` is self-contained with its own config and documentation. The installer dynamically discovers all git-tracked commands and generates their systemd units based on timer configuration in each `.env.example`.
 
 ## Adding a New Command
 
@@ -149,12 +154,18 @@ Each command under `daemon/command/` is self-contained with its own config and d
    - `COMMAND = "name"`
    - `HELP = "Description for Telegram autocomplete"`
    - `def run(message: dict, bot_token: str) -> str:`
-2. Create `daemon/command/<name>/.env.example` (config template)
+2. Create `daemon/command/<name>/.env.example` with:
+   - Timer schedule variables (`TIMER_INTERVAL` or `TIMER_CALENDAR`)
+   - Command-specific configuration (paths, thresholds, etc.)
+   - See `daemon/command/diskcheck/.env.example` for reference
 3. Create `daemon/command/<name>/README.md` (usage docs)
-4. Re-run `./install.sh` to bootstrap the `.env`
-5. Restart the daemon: `systemctl --user restart nasbot.service`
+4. **Commit** the new command to git (only tracked commands are installed)
+5. Re-run `./install.sh` to generate systemd units
+6. Restart the daemon: `systemctl --user restart nasbot.service`
 
-The daemon auto-discovers and loads commands on startup.
+The daemon auto-discovers and loads commands on startup. The installer auto-generates timer units from each command's `.env` configuration.
+
+**Note**: Gitignored commands in your local tree won't be installed automatically — this lets you experiment with personal commands without affecting other users' installations.
 
 ## Requirements
 
