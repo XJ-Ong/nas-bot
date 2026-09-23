@@ -58,8 +58,7 @@ deactivate
 The installer:
 - Creates `~/.config/nas-bot/secrets` from `secrets.example` (bot token, chat ID, user whitelist)
 - Creates `.env` files from each command's `.env.example` template (if not already present)
-- **Dynamically generates** systemd service and timer units for all git-tracked commands in `~/.config/systemd/user/`
-- Skips gitignored commands (systemd service and timer units from private commands won't be installed automatically)
+- **Dynamically generates** systemd service and timer units for every commands in `daemon/command/` in `~/.config/systemd/user/`
 
 ### 4. Configure
 
@@ -148,7 +147,7 @@ nas-bot/
             └── README.md
 ```
 
-Each command under `daemon/command/` is self-contained with its own config and documentation. The installer dynamically discovers all git-tracked commands and generates their systemd units based on timer configuration in each `.env.example`.
+Each command under `daemon/command/` is self-contained with its own config and documentation. The installer dynamically discovers every command directory and generates its systemd units based on timer configuration in its `.env`.
 
 ## Adding a New Command
 
@@ -161,13 +160,21 @@ Each command under `daemon/command/` is self-contained with its own config and d
    - Command-specific configuration (paths, thresholds, etc.)
    - See `daemon/command/diskcheck/.env.example` for reference
 3. Create `daemon/command/<name>/README.md` (usage docs)
-4. **Commit** the new command to git (only tracked commands are installed)
+4. Add a `.env` for it (copy from `.env.example`, or `install.sh` will create one on next run)
 5. Re-run `./install.sh` to generate systemd units
 6. Restart the daemon: `systemctl --user restart nasbot.service`
 
 The daemon auto-discovers and loads commands on startup. The installer auto-generates timer units from each command's `.env` configuration.
 
-**Note**: Gitignored commands in your local tree won't be installed automatically — this lets you experiment with personal commands without affecting other users' installations.
+### Custom Commands
+Any command directory under `daemon/command/` gets installed as long as it has a `.env` — whether or not it's committed to git.
+
+If you want a personal/experimental command to stay off GitHub, keep its directory untracked from git:
+
+```bash
+cd <path-of-custom-command>
+echo "*" > .gitignore
+```
 
 ## Requirements
 
