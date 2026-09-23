@@ -166,7 +166,7 @@ Each command under `daemon/command/` is self-contained with its own config and d
 
 The daemon auto-discovers and loads commands on startup. The installer auto-generates timer units from each command's `.env` configuration.
 
-### Custom Commands
+### Private Commands
 Any command directory under `daemon/command/` gets installed as long as it has a `.env` — whether or not it's committed to git.
 
 If you want a personal/experimental command to stay off GitHub, keep its directory untracked from git:
