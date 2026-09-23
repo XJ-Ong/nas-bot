@@ -53,6 +53,8 @@ deactivate
 ./install.sh
 ```
 
+**Note**: If needed, give the install script execute permission by running `chmod +x install.sh`
+
 The installer:
 - Creates `~/.config/nas-bot/secrets` from `secrets.example` (bot token, chat ID, user whitelist)
 - Creates `.env` files from each command's `.env.example` template (if not already present)
